@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cold Storage</title>
+  <title>মেসার্স এম আর ট্রেডিং কোল্ড স্টোরেজ — লেজার ও বিলিং সিস্টেম</title>
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="https://i.postimg.cc/XNCZ3F7W/Chat-GPT-Image-Aug-18-2026-08-58-49-PM.png">
@@ -138,6 +138,34 @@
     .cloud-btn-primary:hover { background: #0a6fd6; }
     .cloud-btn-danger { background: #ff453a; border: none; color: #fff; }
     .cloud-btn-danger:hover { background: #d63a30; }
+    /* Save / Loading Toast */
+    .save-toast {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      z-index: 99999; display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; border-radius: 12px; font-size: 12px; font-weight: 600;
+      backdrop-filter: blur(16px); box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      transition: all 0.3s ease;
+    }
+    .save-toast.saving { background: rgba(255,159,10,0.9); color: #fff; }
+    .save-toast.loading { background: rgba(10,132,255,0.9); color: #fff; }
+    .save-toast.success { background: rgba(48,209,88,0.9); color: #fff; }
+    .save-toast.error { background: rgba(255,69,58,0.9); color: #fff; }
+    .save-toast .spinner {
+      width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff; border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* Sync pulse bar — top of screen */
+    .sync-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 99998;
+      transition: opacity 0.3s ease;
+    }
+    .sync-bar.active { background: linear-gradient(90deg, #ff9f0a, #ff6482, #ff9f0a); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+    .sync-bar.idle { background: #30d158; opacity: 0; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    /* Button loading state */
+    .btn-loading { pointer-events: none; opacity: 0.6; }
     /* Storage mini donut */
     .storage-mini-donut { position: relative; width: 64px; height: 64px; flex: none; }
     .storage-mini-donut svg { transform: rotate(-90deg); }
@@ -412,6 +440,17 @@
 </head>
 <body class="h-full font-sans text-apple-text bg-[#F5F5F7] dark:bg-apple-darkBg dark:text-gray-100 selection:bg-apple-blue selection:text-white" x-data="app()" x-init="initApp()">
 
+  <!-- Sync Progress Bar — top of screen -->
+  <div class="sync-bar" :class="isSaving ? 'active' : 'idle'" :style="isSaving ? 'opacity:1' : 'opacity:0'"></div>
+
+  <!-- Save/Loading Toast -->
+  <div x-show="showToast" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4" class="save-toast" :class="toastType">
+    <div class="spinner" x-show="toastType === 'saving' || toastType === 'loading'"></div>
+    <svg x-show="toastType === 'success'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+    <svg x-show="toastType === 'error'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+    <span x-text="toastText"></span>
+  </div>
+
   <!-- Login / Security Overlay (role-based access control) -->
   <div x-show="isLocked" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center frosted-glass bg-black/40 backdrop-blur-md">
     <div class="bg-white dark:bg-apple-darkCard p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200/50 dark:border-gray-700 text-center">
@@ -480,39 +519,12 @@
         </nav>
       </div>
 
-      <!-- Footer Info & Sync Status -->
-      <div class="p-4 border-t border-gray-200/60 dark:border-gray-800/80 text-xs space-y-3" :class="sidebarCollapsed ? 'p-2' : ''">
-        <!-- Cloud Sync Status Indicator -->
-        <div x-show="!sidebarCollapsed" class="flex items-center justify-between bg-gray-100 dark:bg-zinc-800/80 p-2.5 rounded-xl">
-          <div class="flex items-center space-x-2">
-            <span class="relative flex h-2.5 w-2.5">
-              <span x-show="syncStatus === 'synced'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-apple-green opacity-75"></span>
-              <span :class="{
-                'bg-apple-green': syncStatus === 'synced',
-                'bg-apple-orange': syncStatus === 'syncing',
-                'bg-apple-red': syncStatus === 'offline'
-              }" class="relative inline-flex rounded-full h-2.5 w-2.5"></span>
-            </span>
-            <span class="text-[11px] font-medium text-apple-secondary" x-text="syncStatusText"></span>
-          </div>
-          <button @click="triggerManualSync()" title="ম্যানুয়াল সিঙ্ক" class="p-1 text-gray-500 hover:text-apple-blue transition">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          </button>
-        </div>
-
-        <div x-show="!sidebarCollapsed" class="flex items-center justify-between text-apple-secondary text-[11px]">
-          <span x-text="currentDateDisplay"></span>
-          <span x-show="currentUser" class="font-semibold text-apple-text dark:text-white truncate max-w-[110px]" x-text="'@' + currentUser.username"></span>
-        </div>
-        <button @click="toggleDarkMode()" :title="darkMode ? 'লাইট মোডে যান' : 'ডার্ক মোডে যান'" class="w-full py-2 bg-gray-100 dark:bg-zinc-800 hover:bg-apple-blue/10 text-apple-secondary rounded-xl text-[11px] font-medium transition flex items-center justify-center space-x-1.5">
-          <svg x-show="!darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
-          <svg x-show="darkMode" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-          <span x-show="!sidebarCollapsed" x-text="darkMode ? 'লাইট মোড' : 'ডার্ক মোড'"></span>
-        </button>
-        <button @click="logoutUser()" class="w-full py-2 bg-gray-100 dark:bg-zinc-800 hover:bg-apple-red hover:text-white text-apple-secondary rounded-xl text-[11px] font-medium transition flex items-center justify-center space-x-1.5" title="লগআউট করুন">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-          <span x-show="!sidebarCollapsed">লগআউট</span>
-        </button>
+      <!-- Minimal Footer Sync Indicator -->
+      <div class="p-3 border-t border-gray-200/60 dark:border-gray-800/80 flex justify-center">
+        <span class="relative flex h-2 w-2">
+          <span x-show="syncStatus === 'synced'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-apple-green opacity-75"></span>
+          <span :class="{ 'bg-apple-green': syncStatus === 'synced', 'bg-apple-orange': syncStatus === 'syncing', 'bg-apple-red': syncStatus === 'offline' }" class="relative inline-flex rounded-full h-2 w-2"></span>
+        </span>
       </div>
     </aside>
 
@@ -526,21 +538,51 @@
         </div>
 
         <!-- Global Quick Actions & Date -->
-        <div class="flex items-center space-x-3">
-          <!-- Search Input -->
-          <div class="relative w-64">
-            <svg class="w-4 h-4 absolute left-3 top-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <input type="text" x-model="globalSearch" placeholder="ক্লায়েন্ট খুঁজুন (নাম/আইডি)..." class="w-full text-xs pl-9 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-apple-blue/50">
-          </div>
+        <div class="flex items-center space-x-2.5">
 
-          <button x-show="can('clients')" @click="openClientModal()" class="px-3.5 py-2 bg-apple-blue text-white rounded-xl text-xs font-medium hover:bg-blue-600 transition flex items-center space-x-1.5 shadow-sm">
+          <!-- Sync Status -->
+          <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-zinc-800 border border-gray-200/60 dark:border-gray-700/60">
+            <span class="relative flex h-2 w-2 shrink-0">
+              <span x-show="syncStatus === 'synced'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-apple-green opacity-75"></span>
+              <span :class="{ 'bg-apple-green': syncStatus === 'synced', 'bg-apple-orange': syncStatus === 'syncing', 'bg-apple-red': syncStatus === 'offline' }" class="relative inline-flex rounded-full h-2 w-2"></span>
+            </span>
+            <span class="text-[10px] font-medium text-apple-secondary hidden lg:inline" x-text="syncStatusText"></span>
+          </div>
+          <button @click="triggerManualSync()" title="ম্যানুয়াল সিঙ্ক" class="p-1.5 text-gray-400 hover:text-apple-blue hover:bg-apple-blue/10 rounded-lg transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          </button>
+
+          <button x-show="can('clients')" @click="openClientModal()" class="px-3 py-2 bg-apple-blue text-white rounded-xl text-xs font-medium hover:bg-blue-600 transition flex items-center space-x-1.5 shadow-sm">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             <span>নতুন ক্লায়েন্ট</span>
           </button>
 
-          <button x-show="can('daily-bulk')" @click="goToTab('daily-bulk')" class="px-3.5 py-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-medium hover:bg-gray-50 transition flex items-center space-x-1.5">
+          <button x-show="can('daily-bulk')" @click="goToTab('daily-bulk')" class="px-3 py-2 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-medium hover:bg-gray-50 transition flex items-center space-x-1.5">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             <span>আজকের বাল্ক এন্ট্রি</span>
+          </button>
+
+          <!-- Divider -->
+          <div class="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
+
+          <!-- Dark Mode Toggle -->
+          <button @click="toggleDarkMode()" :title="darkMode ? 'লাইট মোডে যান' : 'ডার্ক মোডে যান'" class="p-2 text-gray-400 hover:text-apple-blue hover:bg-apple-blue/10 rounded-xl transition">
+            <svg x-show="!darkMode" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+            <svg x-show="darkMode" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          </button>
+
+          <!-- User Card -->
+          <div class="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-xl bg-gray-100/80 dark:bg-zinc-800/60 border border-gray-200/40 dark:border-gray-700/40">
+            <div class="w-7 h-7 rounded-lg bg-apple-blue/15 text-apple-blue flex items-center justify-center text-[10px] font-bold shrink-0" x-text="currentUser ? currentUser.username.charAt(0).toUpperCase() : 'U'"></div>
+            <div class="hidden md:block min-w-0">
+              <p class="text-[10px] font-semibold text-apple-text dark:text-white leading-tight truncate" x-text="currentUser ? '@' + currentUser.username : ''"></p>
+              <p class="text-[9px] text-apple-secondary leading-tight" x-text="currentDateDisplay"></p>
+            </div>
+          </div>
+
+          <!-- Logout -->
+          <button @click="logoutUser()" title="লগআউট করুন" class="p-2 text-gray-400 hover:text-apple-red hover:bg-apple-red/10 rounded-xl transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
           </button>
         </div>
       </header>
@@ -2162,9 +2204,10 @@
                     </p>
                   </div>
                   <div class="flex items-end">
-                    <button @click="saveSettings()" class="w-full px-4 py-3 bg-apple-blue text-white text-xs font-semibold rounded-xl hover:bg-blue-600 transition shadow-sm flex items-center justify-center space-x-1.5">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-                      <span>সেভ করুন</span>
+                    <button @click="saveSettings()" :disabled="isSaving" :class="isSaving ? 'btn-loading' : ''" class="w-full px-4 py-3 bg-apple-blue text-white text-xs font-semibold rounded-xl hover:bg-blue-600 transition shadow-sm flex items-center justify-center space-x-1.5">
+                      <svg x-show="!isSaving" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                      <span x-show="isSaving" class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span>
+                      <span x-text="isSaving ? 'সেভ হচ্ছে...' : 'সেভ করুন'"></span>
                     </button>
                   </div>
                 </div>
@@ -2202,9 +2245,10 @@
                     </p>
                   </div>
                   <div class="flex items-end">
-                    <button @click="saveSettings()" class="w-full px-4 py-3 bg-apple-orange text-white text-xs font-semibold rounded-xl hover:bg-orange-600 transition shadow-sm flex items-center justify-center space-x-1.5">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-                      <span>সেভ করুন</span>
+                    <button @click="saveSettings()" :disabled="isSaving" :class="isSaving ? 'btn-loading' : ''" class="w-full px-4 py-3 bg-apple-orange text-white text-xs font-semibold rounded-xl hover:bg-orange-600 transition shadow-sm flex items-center justify-center space-x-1.5">
+                      <svg x-show="!isSaving" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                      <span x-show="isSaving" class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span>
+                      <span x-text="isSaving ? 'সেভ হচ্ছে...' : 'সেভ করুন'"></span>
                     </button>
                   </div>
                 </div>
@@ -2524,9 +2568,10 @@
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                       এখনই সিঙ্ক
                     </button>
-                    <button @click="saveCloudConfig()" class="cloud-btn cloud-btn-sm cloud-btn-primary">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                      কনফিগারেশন সেভ করুন
+                    <button @click="saveCloudConfig()" :disabled="isSaving" :class="isSaving ? 'btn-loading' : ''" class="cloud-btn cloud-btn-sm cloud-btn-primary">
+                      <svg x-show="!isSaving" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                      <span x-show="isSaving" class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span>
+                      <span x-text="isSaving ? 'সেভ হচ্ছে...' : 'কনফিগারেশন সেভ করুন'"></span>
                     </button>
                   </div>
                 </div>
@@ -2562,97 +2607,6 @@
                   <input type="text" x-model="settings.businessPhones" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800">
                 </div>
               </div>
-            </div>
-
-            <!-- Rent Rules & Rate -->
-            <div class="bg-white dark:bg-apple-darkCard p-6 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-sm space-y-4">
-              <h3 class="text-base font-semibold">ভাড়া হিসাবের নিয়মাবলী ও গ্লোবাল দর</h3>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div>
-                  <label class="block text-apple-secondary mb-1">গ্লোবাল দর (৳ / কেজি / দিন):</label>
-                  <input type="number" step="0.01" x-model.number="settings.globalRate" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800 font-bold text-apple-blue">
-                </div>
-                <div>
-                  <label class="block text-apple-secondary mb-1">ভাড়া হিসাবের নিয়ম (PRD):</label>
-                  <p class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800 text-[11px] leading-relaxed">
-                    দৈনিক ভাড়া = (আগের দিনের বর্তমান কেজি + আজকের স্টক-ইন কেজি) × দর।<br>
-                    আজকের ডেলিভারি পরের দিন থেকে ভাড়া হিসাবে কাটে।
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Rate History -->
-            <div class="bg-white dark:bg-apple-darkCard p-6 rounded-2xl border border-gray-200/80 dark:border-gray-800 shadow-sm space-y-4">
-              <div class="flex justify-between items-center">
-                <h3 class="text-base font-semibold">ভাড়ার দরের ইতিহাস</h3>
-                <span class="text-[11px] px-2.5 py-1 rounded-full bg-apple-blue/10 text-apple-blue font-medium">Effective-Date Based</span>
-              </div>
-              <p class="text-[11px] text-apple-secondary leading-relaxed">দরের কার্যকর শুরু ও শেষ তারিখের মধ্যে পরা প্রতিটি দিনের ভাড়া সেই দরে হিসাব হবে — পুরনো এন্ট্রিও পুনরায় হিসাব হয়। "দেখানোর দর" বিলে ক্লায়েন্টকে দেখানো হয়, "হিসাবের দর"-এ আসল ভাড়া গুণ হয়।</p>
-
-              <div class="grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
-                <div>
-                  <label class="block text-apple-secondary mb-1">ব্যাপ্তি:</label>
-                  <select x-model="rateForm.scope" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800">
-                    <option value="global">সব ক্লায়েন্ট (Global)</option>
-                    <option value="client">নির্দিষ্ট ক্লায়েন্ট</option>
-                  </select>
-                </div>
-                <div x-show="rateForm.scope === 'client'">
-                  <label class="block text-apple-secondary mb-1">ক্লায়েন্ট:</label>
-                  <select x-model="rateForm.clientId" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800">
-                    <template x-for="c in clients" :key="c.id">
-                      <option :value="c.id" x-text="'[' + c.clientId + '] ' + c.name"></option>
-                    </template>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-apple-secondary mb-1">হিসাবের দর (৳/কেজি/দিন):</label>
-                  <input type="number" step="0.01" x-model.number="rateForm.rate" placeholder="0.15" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800 font-bold text-apple-blue">
-                </div>
-                <div>
-                  <label class="block text-apple-secondary mb-1">দেখানোর দর (ফাঁকা = হিসাবের দর):</label>
-                  <input type="number" step="0.01" x-model.number="rateForm.displayRate" placeholder="0.13" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800">
-                </div>
-                <div>
-                  <label class="block text-apple-secondary mb-1">কার্যকর শুরু:</label>
-                  <input type="date" x-model="rateForm.effectiveFrom" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800">
-                </div>
-                <div>
-                  <label class="block text-apple-secondary mb-1">কার্যকর শেষ (ফাঁকা = শেষ নেই):</label>
-                  <input type="date" x-model="rateForm.effectiveTo" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800">
-                </div>
-              </div>
-              <div class="flex justify-end">
-                <button @click="addRate()" class="px-4 py-2 bg-apple-blue text-white text-xs font-medium rounded-xl hover:bg-blue-600 transition shadow-sm">দর যোগ করুন</button>
-              </div>
-
-              <table class="w-full text-xs text-left" x-show="rates.length > 0">
-                <thead>
-                  <tr class="border-b border-gray-200 dark:border-gray-700 text-apple-secondary">
-                    <th class="py-2 pr-2">কার্যকর সময়সীমা</th>
-                    <th class="py-2 pr-2">ব্যাপ্তি</th>
-                    <th class="py-2 pr-2">হিসাবের দর</th>
-                    <th class="py-2 pr-2">দেখানোর দর</th>
-                    <th class="py-2"></th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                  <template x-for="r in rates" :key="r.id">
-                    <tr>
-                      <td class="py-2.5 pr-2 font-semibold" x-text="formatDate(r.effectiveFrom) + (r.effectiveTo ? ' → ' + formatDate(r.effectiveTo) : '')"></td>
-                      <td class="py-2.5 pr-2" x-text="r.scope === 'global' ? 'গ্লোবাল' : (getClientName(r.clientId) + ' (ক্লায়েন্ট)')"></td>
-                      <td class="py-2.5 pr-2 font-bold text-apple-blue" x-text="'৳ ' + r.rate"></td>
-                      <td class="py-2.5 pr-2" x-text="r.displayRate ? ('৳ ' + r.displayRate) : '—'"></td>
-                      <td class="py-2.5 text-right">
-                        <button @click="deleteRate(r.id)" class="p-1 text-gray-400 hover:text-apple-red transition" title="মুছে ফেলুন">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        </button>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
             </div>
 
             <!-- User Management (Admin Only) -->
@@ -3062,7 +3016,10 @@
 
         <div class="pt-4 px-6 py-4 border-t dark:border-gray-800 flex justify-end space-x-2 shrink-0">
           <button type="button" @click="showClientModal = false" class="px-4 py-2 bg-gray-100 dark:bg-zinc-800 text-xs rounded-xl font-medium">বাতিল</button>
-          <button type="submit" class="px-5 py-2 bg-apple-blue text-white text-xs rounded-xl font-medium hover:bg-blue-600 shadow-sm">সংরক্ষণ করুন</button>
+          <button type="submit" :disabled="isSaving" :class="isSaving ? 'btn-loading' : ''" class="px-5 py-2 bg-apple-blue text-white text-xs rounded-xl font-medium hover:bg-blue-600 shadow-sm">
+            <span x-show="!isSaving">সংরক্ষণ করুন</span>
+            <span x-show="isSaving" class="flex items-center gap-1.5"><span class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span> সেভ হচ্ছে...</span>
+          </button>
         </div>
       </form>
     </div>
@@ -3115,7 +3072,10 @@
 
         <div class="pt-4 flex justify-end space-x-2">
           <button type="button" @click="showEntryModal = false" class="px-4 py-2 bg-gray-100 dark:bg-zinc-800 text-xs rounded-xl font-medium">বাতিল</button>
-          <button type="submit" class="px-5 py-2 bg-apple-blue text-white text-xs rounded-xl font-medium hover:bg-blue-600 shadow-sm">সেভ করুন</button>
+          <button type="submit" :disabled="isSaving" :class="isSaving ? 'btn-loading' : ''" class="px-5 py-2 bg-apple-blue text-white text-xs rounded-xl font-medium hover:bg-blue-600 shadow-sm">
+            <span x-show="!isSaving">সেভ করুন</span>
+            <span x-show="isSaving" class="flex items-center gap-1.5"><span class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span> সেভ হচ্ছে...</span>
+          </button>
         </div>
       </form>
     </div>
@@ -3165,7 +3125,10 @@
 
         <div class="pt-4 flex justify-end space-x-2">
           <button type="button" @click="showPaymentModal = false" class="px-4 py-2 bg-gray-100 dark:bg-zinc-800 text-xs rounded-xl font-medium">বাতিল</button>
-          <button type="submit" class="px-5 py-2 bg-apple-green text-white text-xs rounded-xl font-medium hover:bg-green-600 shadow-sm">জমা সেভ করুন</button>
+          <button type="submit" :disabled="isSaving" :class="isSaving ? 'btn-loading' : ''" class="px-5 py-2 bg-apple-green text-white text-xs rounded-xl font-medium hover:bg-green-600 shadow-sm">
+            <span x-show="!isSaving">জমা সেভ করুন</span>
+            <span x-show="isSaving" class="flex items-center gap-1.5"><span class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span> সেভ হচ্ছে...</span>
+          </button>
         </div>
       </form>
     </div>
@@ -3202,7 +3165,10 @@
 
         <div class="pt-4 flex justify-end space-x-2">
           <button type="button" @click="showExpenseModal = false" class="px-4 py-2 bg-gray-100 dark:bg-zinc-800 text-xs rounded-xl font-medium">বাতিল</button>
-          <button type="submit" class="px-5 py-2 bg-apple-green text-white text-xs rounded-xl font-medium hover:bg-green-600 shadow-sm">খরচ সেভ করুন</button>
+          <button type="submit" :disabled="isSaving" :class="isSaving ? 'btn-loading' : ''" class="px-5 py-2 bg-apple-green text-white text-xs rounded-xl font-medium hover:bg-green-600 shadow-sm">
+            <span x-show="!isSaving">খরচ সেভ করুন</span>
+            <span x-show="isSaving" class="flex items-center gap-1.5"><span class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span> সেভ হচ্ছে...</span>
+          </button>
         </div>
       </form>
     </div>
@@ -3299,9 +3265,9 @@
     // The browser keeps NOTHING in localStorage — every boot pulls from the
     // server, and every change is pushed straight back to the server.
     const ADATA_CONFIG = {
-      appId: 'ms-m-r-trading',
-      apiKey: 'adcloud_5c4c6e78e9d41caf64c33327449ffd0093551881660ce45b',
-      serverUrl: 'http://192.168.0.104:3000'
+      appId: 'm-r-trading',
+      apiKey: 'adcloud_9357eb3ebff7e37ddd0686171b0efcedf9437addd677100c',
+      serverUrl: 'http://192.168.0.253:3000'
     };
 
     const ADATA_COLLECTIONS = ['settings', 'clients', 'ledger_entries', 'payments', 'rates', 'monthly_bill_snapshots', 'expenses', 'users', 'stores'];
@@ -3309,7 +3275,7 @@
     // Available Adata Cloud server presets — pick one in Settings, or type a
     // custom URL below. Boot always uses the first (default) server.
     const SERVER_PRESETS = [
-      { label: 'সার্ভার ১ — 10.69.177.251 (ডিফল্ট)', url: 'http://10.63.1.175:3000' },
+      { label: 'সার্ভার ১ — 10.69.177.251 (ডিফল্ট)', url: 'http://http://192.168.0.104:3000' },
       { label: 'সার্ভার ২ — 10.63.1.141', url: 'http://10.63.1.141:3000' }
     ];
 
@@ -3533,6 +3499,12 @@
         clientFilter: 'all',
         syncStatus: 'synced', // synced, syncing, offline
         syncStatusText: 'অনলাইন সিঙ্কড',
+        isSaving: false,
+        savingText: '',
+        loadingText: '',
+        showToast: false,
+        toastText: '',
+        toastType: 'success',
         cloudDb: null,
         cloudQueue: null,
         realtimeConn: null,
@@ -4615,43 +4587,46 @@
 
         saveClient() {
           if (!this.requirePerm('clients')) return;
-          let savedClient = null;
-          if (this.editingClient) {
-            Object.assign(this.editingClient, {
-              clientId: this.clientForm.clientId,
-              name: this.clientForm.name,
-              address: this.clientForm.address,
-              mobile: this.clientForm.mobile,
-              openingStock: { bags: Number(this.clientForm.openingBags), kg: Number(this.clientForm.openingKg) },
-              openingBalance: Number(this.clientForm.openingBalance),
-              ratePerKgPerDay: this.clientForm.ratePerKgPerDay ? Number(this.clientForm.ratePerKgPerDay) : null,
-              displayRatePerKgPerDay: this.clientForm.displayRatePerKgPerDay ? Number(this.clientForm.displayRatePerKgPerDay) : null
-            });
-            savedClient = this.editingClient;
-            this.recalculateClientLedger(this.editingClient.id);
-          } else {
-            const newClient = {
-              id: 'client_' + Date.now(),
-              clientId: this.clientForm.clientId,
-              name: this.clientForm.name,
-              address: this.clientForm.address,
-              mobile: this.clientForm.mobile,
-              openingStock: { bags: Number(this.clientForm.openingBags), kg: Number(this.clientForm.openingKg) },
-              openingBalance: Number(this.clientForm.openingBalance),
-              ratePerKgPerDay: this.clientForm.ratePerKgPerDay ? Number(this.clientForm.ratePerKgPerDay) : null,
-              displayRatePerKgPerDay: this.clientForm.displayRatePerKgPerDay ? Number(this.clientForm.displayRatePerKgPerDay) : null,
-              status: 'active',
-              currentStock: { bags: Number(this.clientForm.openingBags), kg: Number(this.clientForm.openingKg) },
-              runningBalance: Number(this.clientForm.openingBalance)
-            };
-            this.clients.push(newClient);
-            savedClient = newClient;
-            this.selectedClientId = newClient.id;
-            this.recalculateClientLedger(newClient.id);
-          }
-          this.showClientModal = false;
-          this.initBulkRows();
-          this.enqueueRecordSync('clients', savedClient);
+          if (this.isSaving) return;
+          this.withSaving('ক্লায়েন্ট সেভ হচ্ছে...', () => {
+            let savedClient = null;
+            if (this.editingClient) {
+              Object.assign(this.editingClient, {
+                clientId: this.clientForm.clientId,
+                name: this.clientForm.name,
+                address: this.clientForm.address,
+                mobile: this.clientForm.mobile,
+                openingStock: { bags: Number(this.clientForm.openingBags), kg: Number(this.clientForm.openingKg) },
+                openingBalance: Number(this.clientForm.openingBalance),
+                ratePerKgPerDay: this.clientForm.ratePerKgPerDay ? Number(this.clientForm.ratePerKgPerDay) : null,
+                displayRatePerKgPerDay: this.clientForm.displayRatePerKgPerDay ? Number(this.clientForm.displayRatePerKgPerDay) : null
+              });
+              savedClient = this.editingClient;
+              this.recalculateClientLedger(this.editingClient.id);
+            } else {
+              const newClient = {
+                id: 'client_' + Date.now(),
+                clientId: this.clientForm.clientId,
+                name: this.clientForm.name,
+                address: this.clientForm.address,
+                mobile: this.clientForm.mobile,
+                openingStock: { bags: Number(this.clientForm.openingBags), kg: Number(this.clientForm.openingKg) },
+                openingBalance: Number(this.clientForm.openingBalance),
+                ratePerKgPerDay: this.clientForm.ratePerKgPerDay ? Number(this.clientForm.ratePerKgPerDay) : null,
+                displayRatePerKgPerDay: this.clientForm.displayRatePerKgPerDay ? Number(this.clientForm.displayRatePerKgPerDay) : null,
+                status: 'active',
+                currentStock: { bags: Number(this.clientForm.openingBags), kg: Number(this.clientForm.openingKg) },
+                runningBalance: Number(this.clientForm.openingBalance)
+              };
+              this.clients.push(newClient);
+              savedClient = newClient;
+              this.selectedClientId = newClient.id;
+              this.recalculateClientLedger(newClient.id);
+            }
+            this.showClientModal = false;
+            this.initBulkRows();
+            this.enqueueRecordSync('clients', savedClient);
+          });
         },
 
         editClient(client) {
@@ -4701,16 +4676,17 @@
         saveLedgerEntry() {
           if (!this.requirePerm('client-ledger')) return;
           if (!this.selectedClientId) return;
-
-          this.upsertLedgerEntry(this.selectedClientId, this.entryForm.date, {
-            stockIn: { bags: Number(this.entryForm.inBags) || 0, kg: Number(this.entryForm.inKg) || 0, storeId: this.entryForm.inStore },
-            delivery: { bags: Number(this.entryForm.outBags) || 0, kg: Number(this.entryForm.outKg) || 0, storeId: this.entryForm.outStore },
-            deposit: Number(this.entryForm.deposit) || 0
+          if (this.isSaving) return;
+          this.withSaving('এন্ট্রি সেভ হচ্ছে...', () => {
+            this.upsertLedgerEntry(this.selectedClientId, this.entryForm.date, {
+              stockIn: { bags: Number(this.entryForm.inBags) || 0, kg: Number(this.entryForm.inKg) || 0, storeId: this.entryForm.inStore },
+              delivery: { bags: Number(this.entryForm.outBags) || 0, kg: Number(this.entryForm.outKg) || 0, storeId: this.entryForm.outStore },
+              deposit: Number(this.entryForm.deposit) || 0
+            });
+            this.editingEntryId = null;
+            this.recalculateClientLedger(this.selectedClientId);
+            this.showEntryModal = false;
           });
-
-          this.editingEntryId = null;
-          this.recalculateClientLedger(this.selectedClientId);
-          this.showEntryModal = false;
         },
 
         deleteLedgerEntry(entryId) {
@@ -4741,34 +4717,33 @@
         savePayment() {
           if (!this.requirePerm('payments')) return;
           if (!this.paymentForm.clientId || !this.paymentForm.amount) return;
-
-          const payment = {
-            id: 'pay_' + Date.now(),
-            clientId: this.paymentForm.clientId,
-            date: this.paymentForm.date,
-            amount: Number(this.paymentForm.amount),
-            method: this.paymentForm.method,
-            note: this.paymentForm.note
-          };
-
-          this.payments.push(payment);
-
-          const amount = Number(this.paymentForm.amount);
-          const existing = this.ledgerEntries.find(e => e.clientId === this.paymentForm.clientId && e.date === this.paymentForm.date);
-          if (existing) {
-            existing.deposit = Math.round(((existing.deposit || 0) + amount) * 100) / 100;
-          } else {
-            this.upsertLedgerEntry(this.paymentForm.clientId, this.paymentForm.date, {
-              stockIn: { bags: 0, kg: 0 },
-              delivery: { bags: 0, kg: 0 },
-              deposit: amount,
-              note: 'Payment: ' + this.paymentForm.method + ' ' + (this.paymentForm.note || '')
-            });
-          }
-
-          this.recalculateClientLedger(this.paymentForm.clientId);
-          this.enqueueRecordSync('payments', payment);
-          this.showPaymentModal = false;
+          if (this.isSaving) return;
+          this.withSaving('পেমেন্ট সেভ হচ্ছে...', () => {
+            const payment = {
+              id: 'pay_' + Date.now(),
+              clientId: this.paymentForm.clientId,
+              date: this.paymentForm.date,
+              amount: Number(this.paymentForm.amount),
+              method: this.paymentForm.method,
+              note: this.paymentForm.note
+            };
+            this.payments.push(payment);
+            const amount = Number(this.paymentForm.amount);
+            const existing = this.ledgerEntries.find(e => e.clientId === this.paymentForm.clientId && e.date === this.paymentForm.date);
+            if (existing) {
+              existing.deposit = Math.round(((existing.deposit || 0) + amount) * 100) / 100;
+            } else {
+              this.upsertLedgerEntry(this.paymentForm.clientId, this.paymentForm.date, {
+                stockIn: { bags: 0, kg: 0 },
+                delivery: { bags: 0, kg: 0 },
+                deposit: amount,
+                note: 'Payment: ' + this.paymentForm.method + ' ' + (this.paymentForm.note || '')
+              });
+            }
+            this.recalculateClientLedger(this.paymentForm.clientId);
+            this.enqueueRecordSync('payments', payment);
+            this.showPaymentModal = false;
+          });
         },
 
         // ===== DAILY INCOME / EXPENSE =====
@@ -4861,29 +4836,31 @@
         saveExpense() {
           if (!this.requirePerm('daily-cash')) return;
           if (!this.expenseForm.date || !this.expenseForm.description.trim() || !Number(this.expenseForm.amount)) return;
-
-          if (this.editingExpenseId) {
-            const ex = this.expenses.find(e => e.id === this.editingExpenseId);
-            if (ex) {
-              ex.date = this.expenseForm.date;
-              ex.description = this.expenseForm.description.trim();
-              ex.amount = Number(this.expenseForm.amount);
-              ex.note = this.expenseForm.note || '';
-              ex.updatedAt = Date.now();
-              this.enqueueRecordSync('expenses', ex);
+          if (this.isSaving) return;
+          this.withSaving('খরচ সেভ হচ্ছে...', () => {
+            if (this.editingExpenseId) {
+              const ex = this.expenses.find(e => e.id === this.editingExpenseId);
+              if (ex) {
+                ex.date = this.expenseForm.date;
+                ex.description = this.expenseForm.description.trim();
+                ex.amount = Number(this.expenseForm.amount);
+                ex.note = this.expenseForm.note || '';
+                ex.updatedAt = Date.now();
+                this.enqueueRecordSync('expenses', ex);
+              }
+            } else {
+              const expense = {
+                id: 'exp_' + Date.now(),
+                date: this.expenseForm.date,
+                description: this.expenseForm.description.trim(),
+                amount: Number(this.expenseForm.amount),
+                note: this.expenseForm.note || ''
+              };
+              this.expenses.push(expense);
+              this.enqueueRecordSync('expenses', expense);
             }
-          } else {
-            const expense = {
-              id: 'exp_' + Date.now(),
-              date: this.expenseForm.date,
-              description: this.expenseForm.description.trim(),
-              amount: Number(this.expenseForm.amount),
-              note: this.expenseForm.note || ''
-            };
-            this.expenses.push(expense);
-            this.enqueueRecordSync('expenses', expense);
-          }
-          this.showExpenseModal = false;
+            this.showExpenseModal = false;
+          });
         },
 
         deleteExpense(id) {
@@ -5239,46 +5216,70 @@
         // Settings & Storage Persistence (cloud-only — no localStorage)
         saveSettings() {
           if (!this.requirePerm('settings')) return;
-          const prev = this.getCloudSession();
-          const next = { appId: this.settings.cloudAppId, serverUrl: this.settings.cloudServerUrl };
-          const switched = prev && (prev.appId !== next.appId || prev.serverUrl !== next.serverUrl);
-
-          this.recalculateAllClients();
-
-          if (switched) {
-            // PRD: switching App ID / Server URL clears the old app's in-memory
-            // records, queue & session, then reconnects to the new app's data.
-            this.stripCloudMeta();
-            this.syncStatus = 'syncing';
-            this.syncStatusText = 'নতুন সার্ভারে কানেক্ট হচ্ছে...';
-            this.cloudSession = next;
-            this.startCloud();
-          } else {
-            this.enqueueRecordSync('settings', this.settings);
-            if (this.cloudQueue) this.cloudQueue.flush();
-          }
-          alert('সেটিংস সফলভাবে সেভ করা হয়েছে!');
+          if (this.isSaving) return;
+          this.withSaving('সেটিংস সেভ হচ্ছে...', async () => {
+            const prev = this.getCloudSession();
+            const next = { appId: this.settings.cloudAppId, serverUrl: this.settings.cloudServerUrl };
+            const switched = prev && (prev.appId !== next.appId || prev.serverUrl !== next.serverUrl);
+            this.recalculateAllClients();
+            if (switched) {
+              this.stripCloudMeta();
+              this.syncStatus = 'syncing';
+              this.syncStatusText = 'নতুন সার্ভারে কানেক্ট হচ্ছে...';
+              this.cloudSession = next;
+              await this.startCloud();
+            } else {
+              this.enqueueRecordSync('settings', this.settings);
+              if (this.cloudQueue) this.cloudQueue.flush();
+            }
+          });
         },
 
         // Cloud configuration save (standalone tab, requires 'cloud' permission).
         // Same reconnect-on-switch logic as saveSettings.
         saveCloudConfig() {
           if (!this.requirePerm('cloud')) return;
-          const prev = this.getCloudSession();
-          const next = { appId: this.settings.cloudAppId, serverUrl: this.settings.cloudServerUrl };
-          const switched = prev && (prev.appId !== next.appId || prev.serverUrl !== next.serverUrl);
+          if (this.isSaving) return;
+          this.withSaving('ক্লাউড কনফিগ সেভ হচ্ছে...', async () => {
+            const prev = this.getCloudSession();
+            const next = { appId: this.settings.cloudAppId, serverUrl: this.settings.cloudServerUrl };
+            const switched = prev && (prev.appId !== next.appId || prev.serverUrl !== next.serverUrl);
+            if (switched) {
+              this.stripCloudMeta();
+              this.syncStatus = 'syncing';
+              this.syncStatusText = 'নতুন সার্ভারে কানেক্ট হচ্ছে...';
+              this.cloudSession = next;
+              await this.startCloud();
+            } else {
+              this.enqueueRecordSync('settings', this.settings);
+              if (this.cloudQueue) this.cloudQueue.flush();
+            }
+          });
+        },
 
-          if (switched) {
-            this.stripCloudMeta();
-            this.syncStatus = 'syncing';
-            this.syncStatusText = 'নতুন সার্ভারে কানেক্ট হচ্ছে...';
-            this.cloudSession = next;
-            this.startCloud();
-          } else {
-            this.enqueueRecordSync('settings', this.settings);
-            if (this.cloudQueue) this.cloudQueue.flush();
+        // ===== TOAST / LOADING HELPERS =====
+        showToastMsg(text, type = 'success', duration = 2500) {
+          this.toastText = text;
+          this.toastType = type;
+          this.showToast = true;
+          if (duration > 0) {
+            setTimeout(() => { this.showToast = false; }, duration);
           }
-          alert('ক্লাউড কনফিগারেশন সফলভাবে সেভ করা হয়েছে!');
+        },
+        async withSaving(text, fn) {
+          if (this.isSaving) return;
+          this.isSaving = true;
+          this.savingText = text;
+          this.showToastMsg(text, 'saving', 0);
+          try {
+            await fn();
+            this.showToastMsg('সেভ হয়েছে ✓', 'success', 2000);
+          } catch (e) {
+            this.showToastMsg('সেভ ব্যর্থ হয়েছে!', 'error', 3000);
+          } finally {
+            this.isSaving = false;
+            this.savingText = '';
+          }
         },
 
         // Cloud-primary persistence: every data change is pushed to the Adata
@@ -5473,9 +5474,11 @@
           }
 
           try {
+            this.showToastMsg('ডেটা সার্ভার থেকে লোড হচ্ছে...', 'loading', 0);
             await this.pullAndMerge();
             this.ensureAdminUser();
             this.ensureDefaultStores();
+            this.showToastMsg('ডেটা লোড সম্পন্ন ✓', 'success', 2000);
             this.realtimeConn = setupRealtime(cfg, () => {
               // Ignore SSE events caused by our own writes: the local copy is
               // already authoritative, and re-pulling right after a POST would
